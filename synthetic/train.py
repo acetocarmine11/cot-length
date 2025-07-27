@@ -97,9 +97,10 @@ compile = False # use PyTorch 2.0 to compile the model to be faster
 n_layer = model_size
 n_head = model_size
 n_embd = model_size * each_head_dim
-out_dir = f'out-arithmetic/model-size_{model_size}/T_{T}/mixed_t_{t}'
+out_dir = f'synthetic/out-arithmetic/model-size_{model_size}/T_{T}/mixed_t_{t}'
 # out_dir = f'out-arithmetic/model-size_{model_size}_{each_head_dim}/mixed_T_{T}/t_{t}'
-result_path = f"train_logs/train_results_{t}_{model_size}_{max_iters}.txt"
+result_path = f"synthetic/logs/train_results_{t}_{model_size}_{max_iters}.txt"
+os.makedirs(os.path.dirname(result_path), exist_ok=True)
 with open(result_path, 'a') as out_file:
     out_file.write(out_dir)
 print(f"n_layer={n_layer}, n_head={n_head}, n_embd={n_embd}, out_dir={out_dir}")
@@ -138,7 +139,7 @@ ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torc
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 # batch generater
-data_dir = f'data/arithmetic/{T}/mixed_t_{t}/'
+data_dir = f'synthetic/dataset/data/arithmetic/{T}/mixed_t_{t}/'
 train_batch = batch_generator(data_dir, 'train', batch_size, block_size, device, arithmeticTokenizer)
 # val_batch = batch_generator(data_dir, 'val', batch_size, block_size, device, arithmeticTokenizer)
 val_batchs = [batch_generator(data_dir, 'val', batch_size, block_size, device, arithmeticTokenizer, ops_per_step = ops_per_step, t = t) for ops_per_step in range(t)]

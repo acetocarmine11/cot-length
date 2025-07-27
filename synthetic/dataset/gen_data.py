@@ -6,7 +6,7 @@ import os
 import sys
 from ..tokenizor import prepare_and_save_data, arithmeticTokenizer, ff_mod, ts
 from multiprocessing import Pool
-
+import multiprocessing
 
 class Node:
     def __init__(self, value, parent=None):
@@ -169,9 +169,9 @@ def gen_mixed_data():
         # Combine results and write to file
         train_data = [item for sublist in results for item in sublist]
         if temp_t == ts[0]+1:
-            write_jsonl(train_data, f'data/arithmetic/{T}/mixed_t_{t}/train.jsonl')
+            write_jsonl(train_data, f'synthetic/dataset/data/arithmetic/{T}/mixed_t_{t}/train.jsonl')
         else:
-            write_jsonl(train_data, f'data/arithmetic/{T}/mixed_t_{t}/train.jsonl', write_type = 'a')
+            write_jsonl(train_data, f'synthetic/dataset/data/arithmetic/{T}/mixed_t_{t}/train.jsonl', write_type = 'a')
 
         args = [(val_samples // num_processes, T, ff_mod, temp_t, True) for _ in range(num_processes)]
         with Pool(num_processes) as pool:
@@ -180,48 +180,18 @@ def gen_mixed_data():
         # Combine results and write to file
         val_data = [item for sublist in results for item in sublist]
         if temp_t == ts[0]+1:
-            write_jsonl(val_data, f'data/arithmetic/{T}/mixed_t_{t}/val.jsonl')
+            write_jsonl(val_data, f'synthetic/dataset/data/arithmetic/{T}/mixed_t_{t}/val.jsonl')
         else:
-            write_jsonl(val_data, f'data/arithmetic/{T}/mixed_t_{t}/val.jsonl', write_type = 'a')
+            write_jsonl(val_data, f'synthetic/dataset/data/arithmetic/{T}/mixed_t_{t}/val.jsonl', write_type = 'a')
 
-    prepare_and_save_data(f'data/arithmetic/{T}/mixed_t_{t}/', 'train', arithmeticTokenizer)
-    prepare_and_save_data(f'data/arithmetic/{T}/mixed_t_{t}/', 'val', arithmeticTokenizer)
+    prepare_and_save_data(f'synthetic/dataset/data/arithmetic/{T}/mixed_t_{t}/', 'train', arithmeticTokenizer)
+    prepare_and_save_data(f'synthetic/dataset/data/arithmetic/{T}/mixed_t_{t}/', 'val', arithmeticTokenizer)
 
-
-# def gen_data():
-#     T = 256  # max depth of tree
-#     for t in range(1,4):
-#         base_samples = 100                                                                  
-#         num_cpus = 40
-#         train_samples = num_cpus*base_samples*9
-#         val_samples = num_cpus*base_samples
-#         # ff_mod = 4  
-#         num_processes = num_cpus  
-        
-
-#         temp_t = ts[t-1] + 1
-#         args = [(train_samples // num_processes, T, ff_mod, temp_t, True) for _ in range(num_processes)]
-#         with Pool(num_processes) as pool:
-#             results = pool.map(parallel_generate_data, args)
-        
-#         # Combine results and write to file
-#         train_data = [item for sublist in results for item in sublist]
-#         write_jsonl(train_data, f'data/arithmetic/{T}/t_{t}/train.jsonl')
-
-
-#         args = [(val_samples // num_processes, T, ff_mod, temp_t, True) for _ in range(num_processes)]
-#         with Pool(num_processes) as pool:
-#             results = pool.map(parallel_generate_data, args)
-        
-#         # Combine results and write to file
-#         val_data = [item for sublist in results for item in sublist]
-#         write_jsonl(val_data, f'data/arithmetic/{T}/t_{t}/val.jsonl')
-
-#         prepare_and_save_data(f'data/arithmetic/{T}/t_{t}/', 'train', arithmeticTokenizer)
-#         prepare_and_save_data(f'data/arithmetic/{T}/t_{t}/', 'val', arithmeticTokenizer)
+    
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn', force=True) 
     gen_mixed_data()
-    # gen_data()
+
 
 

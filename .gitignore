@@ -1,0 +1,8 @@
+# Ignore real/outputs directory
+real/outputs/
+
+# Ignore math500.jsonl file
+math500.jsonl
+
+# Ignore synthetic/dataset/data directory
+synthetic/dataset/data/ 

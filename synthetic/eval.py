@@ -15,7 +15,6 @@ def get_args():
     parser.add_argument('--test_t', type=int, default=4, help="The value of test_t (default: 2).")
     parser.add_argument('--t', type=int, default=8, help="The value of t (default: 5).")
     parser.add_argument('--model_size', type=int, default=9, help="The size of the model (default: 6).")
-    # parser.add_argument('--each_head_dim', type=int, default=64, help="The dimension of each head (default: 64).")
     parser.add_argument('--T', type=int, default=60, help="The value of T (default: 32).")
     parser.add_argument('--device', type=int, default=0, help="The device to run the model on (default: cuda:0).")
     parser.add_argument('--caption', type=str, default='test', help="caption to result fine name")
@@ -35,7 +34,7 @@ seed = 1337
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
 compile = False # use PyTorch 2.0 to compile the model to be faster
 args = get_args()
-device = f'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
+device = f'cuda' 
 test_T = args.test_T
 test_t = args.test_t
 t = args.t
