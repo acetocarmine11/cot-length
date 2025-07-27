@@ -3,7 +3,9 @@ import json
 from typing import List, Union
 import tqdm
 import os
-from encode_data import prepare_and_save_data, arithmeticTokenizer, ff_mod, ts
+import sys
+sys.path.append('..')
+from tokenizor import prepare_and_save_data, arithmeticTokenizer, ff_mod, ts
 from multiprocessing import Pool
 import pandas as pd
 import numpy as np

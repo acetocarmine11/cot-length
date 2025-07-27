@@ -3,7 +3,9 @@ import json
 from typing import List
 import tqdm
 import os
-from encode_data import ff_mod
+import sys
+sys.path.append('..')
+from tokenizor import ff_mod
 class Node:
     def __init__(self, value, parent=None):
         self.value = value

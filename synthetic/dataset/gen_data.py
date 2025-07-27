@@ -3,7 +3,8 @@ import json
 from typing import List, Union
 import tqdm
 import os
-from encode_data import prepare_and_save_data, arithmeticTokenizer, ff_mod, ts
+import sys
+from ..tokenizor import prepare_and_save_data, arithmeticTokenizer, ff_mod, ts
 from multiprocessing import Pool
 
 
@@ -155,9 +156,8 @@ def gen_mixed_data():
     base_samples = 200                                                                   
     num_cpus = 10
     train_samples = num_cpus*base_samples*9
-    val_samples = num_cpus*base_samples
-    # ff_mod = 10  # 模运算的基数
-    num_processes = 9  # 可根据实际机器的CPU核心数调整
+    val_samples = num_cpus*base_samples 
+    num_processes = 9  
     # ts = [1,2,4,8,16,32,64,128]
 
     for temp_t in ts[:t]:
@@ -195,8 +195,8 @@ def gen_mixed_data():
 #         num_cpus = 40
 #         train_samples = num_cpus*base_samples*9
 #         val_samples = num_cpus*base_samples
-#         # ff_mod = 4  # 模运算的基数
-#         num_processes = num_cpus  # 可根据实际机器的CPU核心数调整
+#         # ff_mod = 4  
+#         num_processes = num_cpus  
         
 
 #         temp_t = ts[t-1] + 1

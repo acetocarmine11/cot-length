@@ -1,10 +1,10 @@
 from transformers import AutoModelForCausalLM
 import torch
-from encode_data import arithmeticTokenizer
+from tokenizor import arithmeticTokenizer
 import json
 from contextlib import nullcontext
 import torch
-from encode_data import arithmeticTokenizer, ts
+from tokenizor import arithmeticTokenizer, ts
 import json
 import tqdm
 import argparse
