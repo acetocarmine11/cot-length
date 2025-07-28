@@ -1,0 +1,7 @@
+生成dp data
+
+python3 -m synthetic.dataset.gen_dp_data
+
+查看sample示例
+
+python3 -m synthetic.tokenizor

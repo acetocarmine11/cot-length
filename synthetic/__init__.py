@@ -12,4 +12,7 @@ def ff_mod():
 def ts():
     print("ts function called.")
 
+def dpTokenizer():
+    print("dpTokenizer function called.")
+
 print("tokenizor.py has been loaded.")

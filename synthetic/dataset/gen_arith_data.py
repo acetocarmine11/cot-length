@@ -158,7 +158,6 @@ def gen_mixed_data():
     train_samples = num_cpus*base_samples*9
     val_samples = num_cpus*base_samples 
     num_processes = 9  
-    # ts = [1,2,4,8,16,32,64,128]
 
     for temp_t in ts[:t]:
         temp_t +=1

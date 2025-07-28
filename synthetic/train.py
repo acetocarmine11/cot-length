@@ -36,6 +36,7 @@ def get_args():
     parser.add_argument('--device', type=str, default='cuda:0', help="The dimension of each head (default: 64).")
     parser.add_argument('--T', type=int, default=128, help="The value of T (default: 32).")
     parser.add_argument('--iter', type=int, default=20000, help="The value of T (default: 32).")
+    parser.add_argument('--dataset', type=str, default='arithmetic', help="The dataset to use (default: arithmetic).")
     return parser.parse_args()
 # -----------------------------------------------------------------------------
 eval_interval = 1000 # keep frequent because we'll overfit
@@ -97,9 +98,9 @@ compile = False # use PyTorch 2.0 to compile the model to be faster
 n_layer = model_size
 n_head = model_size
 n_embd = model_size * each_head_dim
-out_dir = f'synthetic/out-arithmetic/model-size_{model_size}/T_{T}/mixed_t_{t}'
+out_dir = f'synthetic/out-{args.dataset}/model-size_{model_size}/T_{T}/mixed_t_{t}'
 # out_dir = f'out-arithmetic/model-size_{model_size}_{each_head_dim}/mixed_T_{T}/t_{t}'
-result_path = f"synthetic/logs/train_results_{t}_{model_size}_{max_iters}.txt"
+result_path = f"synthetic/logs/train_results_{args.dataset}_{t}_{model_size}_{max_iters}.txt"
 os.makedirs(os.path.dirname(result_path), exist_ok=True)
 with open(result_path, 'a') as out_file:
     out_file.write(out_dir)
@@ -139,10 +140,19 @@ ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torc
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 # batch generater
-data_dir = f'synthetic/dataset/data/arithmetic/{T}/mixed_t_{t}/'
-train_batch = batch_generator(data_dir, 'train', batch_size, block_size, device, arithmeticTokenizer)
-# val_batch = batch_generator(data_dir, 'val', batch_size, block_size, device, arithmeticTokenizer)
-val_batchs = [batch_generator(data_dir, 'val', batch_size, block_size, device, arithmeticTokenizer, ops_per_step = ops_per_step, t = t) for ops_per_step in range(t)]
+data_dir = f'synthetic/dataset/data/{args.dataset}/{T}/mixed_t_{t}/'
+
+# Select tokenizer based on dataset
+if args.dataset == 'arithmetic':
+    tokenizer = arithmeticTokenizer
+elif args.dataset == 'dp':
+    tokenizer = dpTokenizer
+else:
+    raise ValueError(f"Unknown dataset: {args.dataset}")
+
+train_batch = batch_generator(data_dir, 'train', batch_size, block_size, device, tokenizer)
+# val_batch = batch_generator(data_dir, 'val', batch_size, block_size, device, tokenizer)
+val_batchs = [batch_generator(data_dir, 'val', batch_size, block_size, device, tokenizer, ops_per_step = ops_per_step, t = t) for ops_per_step in range(t)]
 
 def get_batch(split, ops_per_step = -1):
     if split == 'train':
@@ -156,7 +166,7 @@ iter_num = 0
 best_val_loss = float('inf')
 
 # attempt to derive vocab_size from the dataset
-meta_vocab_size = arithmeticTokenizer.vocab_len
+meta_vocab_size = tokenizer.vocab_len
 
 
 # model init
@@ -211,14 +221,14 @@ def estimate_loss():
                     X, Y = get_batch(split, ops_per_step)
                     with ctx:
                         logits = model(input_ids = X)[0]
-                        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=arithmeticTokenizer.pad_token_id)
+                        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
                     losses[ops_per_step][k] = loss.item()
                     out['val'] = losses.mean(dim=1)
                     
                     # 计算子任务损失
-                    equal_indices = (X == arithmeticTokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
+                    equal_indices = (X == tokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
                     even_indices = equal_indices
-                    # print(arithmeticTokenizer.decode(X[even_indices].tolist()), arithmeticTokenizer.decode(Y[even_indices].tolist()))
+                    # print(tokenizer.decode(X[even_indices].tolist()), tokenizer.decode(Y[even_indices].tolist()))
                     sub_logits = logits[even_indices]
                     sub_targets = Y[even_indices]
                     sub_loss = F.cross_entropy(sub_logits, sub_targets)
@@ -226,26 +236,26 @@ def estimate_loss():
                     sub_task_loss['val'] = sub_losses.mean(dim=1)
 
                     #计算其他损失
-                    inequal_indices = (X != arithmeticTokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
+                    inequal_indices = (X != tokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
                     even_indices = inequal_indices
-                    # print(arithmeticTokenizer.decode(X[even_indices].tolist()), arithmeticTokenizer.decode(Y[even_indices].tolist()))
+                    # print(tokenizer.decode(X[even_indices].tolist()), tokenizer.decode(Y[even_indices].tolist()))
 
                     
                     in_sub_logits = logits[even_indices]
                     in_sub_targets = Y[even_indices]
-                    in_sub_loss = F.cross_entropy(in_sub_logits, in_sub_targets, ignore_index = arithmeticTokenizer.pad_token_id)
+                    in_sub_loss = F.cross_entropy(in_sub_logits, in_sub_targets, ignore_index = tokenizer.pad_token_id)
                     in_sub_losses[ops_per_step][k] = in_sub_loss.item()
                     in_sub_task_loss['val'] = in_sub_losses.mean(dim=1)
             else:
                 X, Y = get_batch(split)
                 with ctx:
                     logits = model(input_ids = X)[0]
-                    loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=arithmeticTokenizer.pad_token_id)
+                    loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
                 losses[k] = loss.item()
                 out['train'] = losses.mean()
                 
                 # 计算子任务损失
-                equal_indices = (X == arithmeticTokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
+                equal_indices = (X == tokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
                 even_indices = equal_indices
 
                 sub_logits = logits[even_indices]
@@ -255,12 +265,12 @@ def estimate_loss():
                 sub_task_loss['train'] = sub_losses.mean()
 
                 #计算其他损失
-                inequal_indices = (X != arithmeticTokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
+                inequal_indices = (X != tokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
                 even_indices = inequal_indices
 
                 in_sub_logits = logits[even_indices]
                 in_sub_targets = Y[even_indices]
-                in_sub_loss = F.cross_entropy(in_sub_logits, in_sub_targets, ignore_index = arithmeticTokenizer.pad_token_id)
+                in_sub_loss = F.cross_entropy(in_sub_logits, in_sub_targets, ignore_index = tokenizer.pad_token_id)
                 in_sub_losses[k] = in_sub_loss.item()
                 in_sub_task_loss['train'] = in_sub_losses.mean()
     
@@ -345,7 +355,7 @@ while True:
         with ctx:
             # logits, loss = model(X, Y)
             logits = model(input_ids = X)[0]
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=arithmeticTokenizer.pad_token_id)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = get_batch('train')

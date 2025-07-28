@@ -24,9 +24,27 @@ class ArithmeticTokenizer:
     def decode(self, ids):
         return ''.join([self.id_to_token[id] for id in ids if id in self.id_to_token])
 
+class DPTokenizer:
+    def __init__(self, k):
+        self.vocab = [str(i) for i in range(k)] + ['\n',' ', '<END>', '<PAD>', '<BEGIN>'] + [f"<{str(t)}>" for t in ts]
+        self.token_to_id = {token: i for i, token in enumerate(self.vocab)}
+        self.id_to_token = {i: token for token, i in self.token_to_id.items()}
+        self.pad_token_id = self.token_to_id['<PAD>']
+        self.end_token_id = self.token_to_id['<END>']
+        self.begin_token_id = self.token_to_id['<BEGIN>']
+        self.vocab_len = len(self.vocab)
+        # 创建正则表达式来匹配所有token
+        self.pattern = re.compile('|'.join(re.escape(token) for token in sorted(self.vocab, key=len, reverse=True)))
+
+    def encode(self, text):
+        tokens = self.pattern.findall(text)
+        return [self.token_to_id[token] for token in tokens if token in self.token_to_id]
+
+    def decode(self, ids):
+        return ''.join([self.id_to_token[id] for id in ids if id in self.id_to_token])
 
 
-def process_sample(sample, tokenizer):
+def process_arithmetic_sample(sample, tokenizer):
     question = sample['question']
     cot = sample['cot']
     answer = sample['answer']
@@ -36,20 +54,30 @@ def process_sample(sample, tokenizer):
     # question_len = len(encoded_question) + 1 # should adjust the actual input question length
     question_len = len(encoded_question) #不含<k>
     processed = question + '<BEGIN>'+ f"<{str(ops_per_step)}>"  +'\n'
-    q = question
     for idx, step in enumerate(cot):
         processed += step['sub_expression'] + '=' + str(step['value']) + '\n'
-        # if idx + 1 != len(cot):
-        #     # processed += q + '=' + step['expression_after'] + '\n\n'
-        #     processed += step['expression_after'] + '\n\n'
-        # q = step['expression_after']
-    # processed += question + '=' + answer
+
     
     encoded_processed = tokenizer.encode(processed) + [tokenizer.end_token_id]
     
     return encoded_processed, question_len
 
-def prepare_and_save_data(data_path, split, tokenizer):
+def process_dp_sample(sample, tokenizer):
+    question = sample['question']
+    cot = sample['cot']
+    ops_per_step = sample['ops_per_step']
+    
+    encoded_question = tokenizer.encode(question)
+    question_len = len(encoded_question) #不含<k>
+    processed = question + '<BEGIN>'+ f"<{str(ops_per_step)}>"  +'\n'
+    for idx, step in enumerate(cot):
+        processed += str(step['value']) + '\n'
+
+    encoded_processed = tokenizer.encode(processed) + [tokenizer.end_token_id]
+    
+    return encoded_processed, question_len
+
+def prepare_and_save_data(data_path, split, tokenizer, data_type = 'arithmetic'):
     # Read the data
     with open(data_path + f'{split}.jsonl', 'r') as f:
         data = [json.loads(line) for line in f]
@@ -57,7 +85,10 @@ def prepare_and_save_data(data_path, split, tokenizer):
     # Process samples with progress bar
     processed_samples = []
     for sample in tqdm(data, desc=f"Processing {split} data", unit="sample"):
-        processed_samples.append(process_sample(sample, tokenizer))
+        if data_type == 'arithmetic':
+            processed_samples.append(process_arithmetic_sample(sample, tokenizer))
+        elif data_type == 'dp':
+            processed_samples.append(process_dp_sample(sample, tokenizer))
     
     # Separate inputs and question lengths
     inputs = [sample[0] for sample in processed_samples]
@@ -111,34 +142,23 @@ def batch_generator(path, split, batch_size, block_size, device, tokenizer, ops_
 
 ff_mod = 10  # Adjust as needed
 arithmeticTokenizer = ArithmeticTokenizer(ff_mod)
-T = 256
-t = 5
-# path = f'data/ft/{T}/mixed_t_{t}/'
-path = f'data/arithmetic/{T}/mixed_t_{t}/'
-# path = 'data/ft/test/'
-# Usage example
+dpTokenizer = DPTokenizer(ff_mod)
+
+
 if __name__ == "__main__":
-    # pass
-    # # Prepare and save data
-    # prepare_and_save_data(path, 64, arithmeticTokenizer)
-    # prepare_and_save_data(path, 'train', arithmeticTokenizer)
+
+    T = 20
+    t = 10
+    path = f'synthetic/dataset/data/dp/{T}/mixed_t_{t}/'
+
     
     # # Example of getting a batch
     batch_size = 100
-    block_size = 20480
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    block_size = 1024
+    device = torch.device('mps' if torch.cuda.is_available() else 'cpu')
     
-    train_batch = batch_generator(path, 'train', batch_size, block_size, device, arithmeticTokenizer)
-    # # # val_batch = batch_generator(path, 'vaL', batch_size, block_size, device, arithmeticTokenizer)
-    # # val_batchs = [batch_generator(path, 'val', batch_size, block_size, device, arithmeticTokenizer, ops_per_step = ops_per_step) for ops_per_step in range(t+1)]
+    train_batch = batch_generator(path, 'train', batch_size, block_size, device, dpTokenizer)
     x, y = next(train_batch)
     print("Input shape:", x.shape)
-    # print("Target shape:", y.shape)
-    print("Input shape:", arithmeticTokenizer.decode(x[0].tolist()))
-    # print("Target shape:", arithmeticTokenizer.decode(y[0].tolist()))
+    print("Input shape:", dpTokenizer.decode(x[0].tolist()))
 
-    # x, y = next(val_batchs[0])
-    # print("Input shape:", x.shape)
-    # print("Target shape:", y.shape)
-    # print("Input shape:", arithmeticTokenizer.decode(x[0].tolist()))
-    # print("Target shape:", arithmeticTokenizer.decode(y[0].tolist()))
