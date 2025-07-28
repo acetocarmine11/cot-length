@@ -6,3 +6,4 @@ math500.jsonl
 
 # Ignore synthetic/dataset/data directory
 synthetic/dataset/data/ 
+synthetic/logs/train_results_12_6_25000.txt
