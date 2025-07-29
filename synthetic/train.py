@@ -27,6 +27,7 @@ import torch.nn.functional as F
 from tokenizor import batch_generator, arithmeticTokenizer, dpTokenizer
 from transformers import GPT2LMHeadModel, GPT2Config
 from torch.optim import AdamW
+from model.looped_gpt2 import GPT, GPTConfig
 import argparse
 
 def get_args():
@@ -39,6 +40,8 @@ def get_args():
     parser.add_argument('--dataset', type=str, default='arithmetic', help="The dataset to use (default: arithmetic).")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help="The value of gradient_accumulation_steps (default: 1).")
     parser.add_argument('--batch_size', type=int, default=256, help="The value of batch_size (default: 256).")
+    parser.add_argument('--model_type', type=str, default='gpt2', help="The model type to use (default: gpt2). Options: gpt2, looped_gpt2")
+    parser.add_argument('--n_loop', type=int, default=1, help="The number of loops for looped_gpt2 model (default: 1).")
     return parser.parse_args()
 # -----------------------------------------------------------------------------
 eval_interval = 1000 # keep frequent because we'll overfit
@@ -100,13 +103,20 @@ compile = False # use PyTorch 2.0 to compile the model to be faster
 n_layer = model_size
 n_head = model_size
 n_embd = model_size * each_head_dim
-out_dir = f'synthetic/out-{args.dataset}/model-size_{model_size}/T_{T}/mixed_t_{t}'
-# out_dir = f'out-arithmetic/model-size_{model_size}_{each_head_dim}/mixed_T_{T}/t_{t}'
-result_path = f"synthetic/logs/train_results_{args.dataset}_{t}_{model_size}_{max_iters}.txt"
+model_type = args.model_type
+n_loop = args.n_loop
+
+# Update output directory to include model type and n_loop
+if model_type == 'looped_gpt2':
+    out_dir = f'synthetic/out-{args.dataset}/model-size_{model_size}/T_{T}/mixed_t_{t}/looped_gpt2_nloop_{n_loop}'
+else:
+    out_dir = f'synthetic/out-{args.dataset}/model-size_{model_size}/T_{T}/mixed_t_{t}'
+
+result_path = f"synthetic/logs/train_results_{args.dataset}_{t}_{model_size}_{max_iters}_{model_type}_{n_loop}.txt"
 os.makedirs(os.path.dirname(result_path), exist_ok=True)
 with open(result_path, 'a') as out_file:
     out_file.write(out_dir)
-print(f"n_layer={n_layer}, n_head={n_head}, n_embd={n_embd}, out_dir={out_dir}")
+print(f"n_layer={n_layer}, n_head={n_head}, n_embd={n_embd}, model_type={model_type}, n_loop={n_loop}, out_dir={out_dir}")
 # -----------------------------------------------------------------------------
 # various inits, derived attributes, I/O setup
 ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
@@ -176,11 +186,28 @@ model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=bloc
 
 
 #################################################################### load model ########################################################
-configuration = GPT2Config(activation_function = 'gelu',eos_token_id = 16, bos_token_id = 18, n_positions = 3100, n_layer=n_layer, n_head=n_head, n_embd=n_embd,n_inner = 4*n_embd, block_size=block_size, vocab_size=meta_vocab_size, dropout=dropout, position_encoding=position_encoding)
-print(configuration)
-# Initializing a model from the configuration
-model = GPT2LMHeadModel(configuration)
-model.to(device)
+if model_type == 'looped_gpt2':
+    # Use looped GPT2 model
+    configuration = GPTConfig(
+        block_size=block_size,
+        vocab_size=meta_vocab_size,
+        n_layer=n_layer,
+        n_head=n_head,
+        n_embd=n_embd,
+        dropout=dropout,
+        bias=True,
+        n_loop=n_loop
+    )
+    print(configuration)
+    model = GPT(configuration)
+    model.to(device)
+else:
+    # Use standard GPT2 model
+    configuration = GPT2Config(activation_function = 'gelu',eos_token_id = 16, bos_token_id = 18, n_positions = 3100, n_layer=n_layer, n_head=n_head, n_embd=n_embd,n_inner = 4*n_embd, block_size=block_size, vocab_size=meta_vocab_size, dropout=dropout, position_encoding=position_encoding)
+    print(configuration)
+    # Initializing a model from the configuration
+    model = GPT2LMHeadModel(configuration)
+    model.to(device)
 #################################################################### load model ########################################################
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
@@ -222,12 +249,16 @@ def estimate_loss():
                 for ops_per_step in range(t):
                     X, Y = get_batch(split, ops_per_step)
                     with ctx:
-                        logits = model(input_ids = X)[0]
-                        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
+                        if model_type == 'looped_gpt2':
+                            logits, _ = model(X, Y)
+                            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
+                        else:
+                            logits = model(input_ids = X)[0]
+                            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
                     losses[ops_per_step][k] = loss.item()
                     out['val'] = losses.mean(dim=1)
                     
-                    # # 计算子任务损失
+                    # # compute sub-task loss
                     # equal_indices = (X == tokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
                     # even_indices = equal_indices
                     # # print(tokenizer.decode(X[even_indices].tolist()), tokenizer.decode(Y[even_indices].tolist()))
@@ -237,7 +268,7 @@ def estimate_loss():
                     # sub_losses[ops_per_step][k] = sub_loss.item()
                     # sub_task_loss['val'] = sub_losses.mean(dim=1)
 
-                    # #计算其他损失
+                    # # compute other loss
                     # inequal_indices = (X != tokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
                     # even_indices = inequal_indices
                     # # print(tokenizer.decode(X[even_indices].tolist()), tokenizer.decode(Y[even_indices].tolist()))
@@ -251,12 +282,16 @@ def estimate_loss():
             else:
                 X, Y = get_batch(split)
                 with ctx:
-                    logits = model(input_ids = X)[0]
-                    loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
+                    if model_type == 'looped_gpt2':
+                        logits, _ = model(X, Y)
+                        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
+                    else:
+                        logits = model(input_ids = X)[0]
+                        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
                 losses[k] = loss.item()
                 out['train'] = losses.mean()
                 
-                # 计算子任务损失
+                # compute sub-task loss
                 # equal_indices = (X == tokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
                 # even_indices = equal_indices
 
@@ -266,7 +301,7 @@ def estimate_loss():
                 # sub_losses[k] = sub_loss.item()
                 # sub_task_loss['train'] = sub_losses.mean()
 
-                #计算其他损失
+                # compute other loss
                 # inequal_indices = (X != tokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
                 # even_indices = inequal_indices
 
@@ -337,10 +372,17 @@ while True:
             best_val_loss = losses['val'].mean()
             if iter_num > 0:
                 print(f"saving checkpoint to {out_dir}")
-                model.save_pretrained(out_dir)
-                save_path = "pytorch_model.bin"
-                torch.save(model.state_dict(), out_dir + '/' + save_path)
-                print(f"Model saved to {save_path}")
+                if model_type == 'looped_gpt2':
+                    # For looped_gpt2 model, only save state_dict
+                    save_path = "pytorch_model.bin"
+                    torch.save(model.state_dict(), out_dir + '/' + save_path)
+                    print(f"Model saved to {save_path}")
+                else:
+                    # For standard GPT2 model, use save_pretrained
+                    model.save_pretrained(out_dir)
+                    save_path = "pytorch_model.bin"
+                    torch.save(model.state_dict(), out_dir + '/' + save_path)
+                    print(f"Model saved to {save_path}")
 
     # if iter_num == 0:
     #     break
@@ -355,9 +397,12 @@ while True:
             # looking at the source of that context manager, it just toggles this variable
             model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
         with ctx:
-            # logits, loss = model(X, Y)
-            logits = model(input_ids = X)[0]
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
+            if model_type == 'looped_gpt2':
+                logits, _ = model(X, Y)
+                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
+            else:
+                logits = model(input_ids = X)[0]
+                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), Y.view(-1), ignore_index=tokenizer.pad_token_id)
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = get_batch('train')
