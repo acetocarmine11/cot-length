@@ -1,10 +1,9 @@
 from transformers import AutoModelForCausalLM
 import torch
-from tokenizor import arithmeticTokenizer
 import json
 from contextlib import nullcontext
 import torch
-from tokenizor import arithmeticTokenizer, ts
+from tokenizor import arithmeticTokenizer, ts, dpTokenizer
 import json
 import tqdm
 import argparse
@@ -18,6 +17,7 @@ def get_args():
     parser.add_argument('--T', type=int, default=60, help="The value of T (default: 32).")
     parser.add_argument('--device', type=int, default=0, help="The device to run the model on (default: cuda:0).")
     parser.add_argument('--caption', type=str, default='test', help="caption to result fine name")
+    parser.add_argument('--dp', action='store_true', help="Evaluate DP (dynamic programming) model")
     return parser.parse_args()
 
 
@@ -48,8 +48,6 @@ n_embd = model_size * each_head_dim
 
 
 # -----------------------------------------------------------------------------
-# out_dir = f'out-arithmetic/model-size_{model_size}_{each_head_dim}/mixed_T_{T}/t_{t}' # ignored if init_from is not 'resume'
-# out_dir = f'/workspace/stepwiseCoT/out-arithmetic/model-size_{model_size}/T_{T}/mixed_t_{t}'
 
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
@@ -60,33 +58,40 @@ ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torc
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 
-vocab_size = arithmeticTokenizer.vocab_len
-
-# model = GPT2LMHeadModel(configuration)
-model_path = "acetocarmine/M_6_T_80_t_12"
-# out_dir = f'out-arithmetic/model-size_{model_size}/T_{T}/mixed_t_{t}'
+if args.dp:
+    model_path = f'out-dp/model-size_{model_size}/T_{T}/mixed_t_{t}'
+    tokenizor = dpTokenizer
+else:
+    model_path = "acetocarmine/M_6_T_80_t_12"
+    tokenizor = arithmeticTokenizer
+vocab_size = tokenizor.vocab_len
 model = AutoModelForCausalLM.from_pretrained(model_path)
 
 
 model.eval()
 model.to(device)
 if compile:
-    model = torch.compile(model) # requires PyTorch 2.0 (optional)
+    model = torch.compile(model) 
 
 
-encode = arithmeticTokenizer.encode
-decode = arithmeticTokenizer.decode
+
+encode = tokenizor.encode
+decode = tokenizor.decode
+
 
 
 if __name__ == "__main__":
     
-    file_name = f"data/arithmetic/test/new/{test_T}.jsonl"
+    if args.dp:
+        file_name = f"dataset/data/dp/test/{test_T}.jsonl"
+    else:
+        file_name = f"dataset/data/arithmetic/test/{test_T}.jsonl"
     data = []
     with open(file_name, 'r') as f:
         data = [json.loads(line) for line in f]
-    batch_size = 10  # Define batch size for batching queries
+    batch_size = 1  # Define batch size for batching queries
     correct = 0
-    total = 100
+    total = 10
     prompt_nums = [0,0,0,0,0,0,0,0,0,0]
 
     # Process data in batches
@@ -99,26 +104,26 @@ if __name__ == "__main__":
 
         with torch.no_grad():
             with ctx:
-                output_tokens = model.generate(inputs = input_tensor, max_new_tokens = 2500, eos_token_id=arithmeticTokenizer.end_token_id, do_sample=False, pad_token_id = arithmeticTokenizer.pad_token_id)#, top_k = 3)
+                output_tokens = model.generate(inputs = input_tensor, max_new_tokens = 2500, eos_token_id=tokenizor.end_token_id, do_sample=False, pad_token_id = tokenizor.pad_token_id)#, top_k = 3)
                 for idx, tokens in enumerate(output_tokens):
                     answer_tokens = tokens.tolist()
                     
-                    index = answer_tokens.index(arithmeticTokenizer.end_token_id) if arithmeticTokenizer.end_token_id in answer_tokens else len(answer_tokens)
+                    index = answer_tokens.index(tokenizor.end_token_id) if tokenizor.end_token_id in answer_tokens else len(answer_tokens)
                     answer_str = decode(answer_tokens[:index])
-                    correct += (batch[idx]['answer'] in answer_str[-3:])
+                    correct += (batch[idx]['answer'] in answer_str[-(len(batch[idx]['answer'])+1):])
                     prompt_idx = answer_str.index('>')
                     # print(answer_str[prompt_idx])
                     # print(answer_str)
                     prompt_nums[int(answer_str[prompt_idx+2])-1] +=1
-                    if not (batch[idx]['answer'] in answer_str[-3:]):
-                        print(answer_str[-3:])
-                        print('---------------')
-                        print(answer_str)
-                        print(f"std_answer = {batch[idx]['answer']}")
-                        print('---------------')
+                    print(answer_str[-(len(batch[idx]['answer'])+1):])
+                    print('---------------')
+                    print(answer_str)
+                    print(f"std_answer = {batch[idx]['answer']}")
+                    print('---------------')
 
 
-    output_file = f"eval_results/eval_results_{args.caption}.txt"
+    dataset_type = "dp" if args.dp else "arithmetic"
+    output_file = f"eval_results/eval_results_{dataset_type}_{args.caption}.txt"
     print(correct/total)
     print(prompt_nums)
     with open(output_file, 'a') as out_file:

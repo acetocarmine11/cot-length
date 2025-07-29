@@ -24,7 +24,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 import torch.nn.functional as F
-from tokenizor import batch_generator, arithmeticTokenizer
+from tokenizor import batch_generator, arithmeticTokenizer, dpTokenizer
 from transformers import GPT2LMHeadModel, GPT2Config
 from torch.optim import AdamW
 import argparse
@@ -37,6 +37,8 @@ def get_args():
     parser.add_argument('--T', type=int, default=128, help="The value of T (default: 32).")
     parser.add_argument('--iter', type=int, default=20000, help="The value of T (default: 32).")
     parser.add_argument('--dataset', type=str, default='arithmetic', help="The dataset to use (default: arithmetic).")
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help="The value of gradient_accumulation_steps (default: 1).")
+    parser.add_argument('--batch_size', type=int, default=256, help="The value of batch_size (default: 256).")
     return parser.parse_args()
 # -----------------------------------------------------------------------------
 eval_interval = 1000 # keep frequent because we'll overfit
@@ -51,10 +53,10 @@ wandb_project = 'arithmetic'
 wandb_run_name = 'mini-gpt'
 
 dataset = 'arithmetic'
-gradient_accumulation_steps = 1
 
 args = get_args()
-batch_size = 256
+gradient_accumulation_steps = args.gradient_accumulation_steps
+batch_size = args.batch_size
 T = args.T
 t = args.t
 model_size = args.model_size
@@ -225,27 +227,27 @@ def estimate_loss():
                     losses[ops_per_step][k] = loss.item()
                     out['val'] = losses.mean(dim=1)
                     
-                    # 计算子任务损失
-                    equal_indices = (X == tokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
-                    even_indices = equal_indices
-                    # print(tokenizer.decode(X[even_indices].tolist()), tokenizer.decode(Y[even_indices].tolist()))
-                    sub_logits = logits[even_indices]
-                    sub_targets = Y[even_indices]
-                    sub_loss = F.cross_entropy(sub_logits, sub_targets)
-                    sub_losses[ops_per_step][k] = sub_loss.item()
-                    sub_task_loss['val'] = sub_losses.mean(dim=1)
+                    # # 计算子任务损失
+                    # equal_indices = (X == tokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
+                    # even_indices = equal_indices
+                    # # print(tokenizer.decode(X[even_indices].tolist()), tokenizer.decode(Y[even_indices].tolist()))
+                    # sub_logits = logits[even_indices]
+                    # sub_targets = Y[even_indices]
+                    # sub_loss = F.cross_entropy(sub_logits, sub_targets)
+                    # sub_losses[ops_per_step][k] = sub_loss.item()
+                    # sub_task_loss['val'] = sub_losses.mean(dim=1)
 
-                    #计算其他损失
-                    inequal_indices = (X != tokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
-                    even_indices = inequal_indices
-                    # print(tokenizer.decode(X[even_indices].tolist()), tokenizer.decode(Y[even_indices].tolist()))
+                    # #计算其他损失
+                    # inequal_indices = (X != tokenizer.token_to_id['=']).nonzero()[:][::1].permute(1,0).tolist()
+                    # even_indices = inequal_indices
+                    # # print(tokenizer.decode(X[even_indices].tolist()), tokenizer.decode(Y[even_indices].tolist()))
 
                     
-                    in_sub_logits = logits[even_indices]
-                    in_sub_targets = Y[even_indices]
-                    in_sub_loss = F.cross_entropy(in_sub_logits, in_sub_targets, ignore_index = tokenizer.pad_token_id)
-                    in_sub_losses[ops_per_step][k] = in_sub_loss.item()
-                    in_sub_task_loss['val'] = in_sub_losses.mean(dim=1)
+                    # in_sub_logits = logits[even_indices]
+                    # in_sub_targets = Y[even_indices]
+                    # in_sub_loss = F.cross_entropy(in_sub_logits, in_sub_targets, ignore_index = tokenizer.pad_token_id)
+                    # in_sub_losses[ops_per_step][k] = in_sub_loss.item()
+                    # in_sub_task_loss['val'] = in_sub_losses.mean(dim=1)
             else:
                 X, Y = get_batch(split)
                 with ctx:
@@ -255,31 +257,31 @@ def estimate_loss():
                 out['train'] = losses.mean()
                 
                 # 计算子任务损失
-                equal_indices = (X == tokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
-                even_indices = equal_indices
+                # equal_indices = (X == tokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
+                # even_indices = equal_indices
 
-                sub_logits = logits[even_indices]
-                sub_targets = Y[even_indices]
-                sub_loss = F.cross_entropy(sub_logits, sub_targets)
-                sub_losses[k] = sub_loss.item()
-                sub_task_loss['train'] = sub_losses.mean()
+                # sub_logits = logits[even_indices]
+                # sub_targets = Y[even_indices]
+                # sub_loss = F.cross_entropy(sub_logits, sub_targets)
+                # sub_losses[k] = sub_loss.item()
+                # sub_task_loss['train'] = sub_losses.mean()
 
                 #计算其他损失
-                inequal_indices = (X != tokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
-                even_indices = inequal_indices
+                # inequal_indices = (X != tokenizer.token_to_id['=']).nonzero()[:][::2].permute(1,0).tolist()
+                # even_indices = inequal_indices
 
-                in_sub_logits = logits[even_indices]
-                in_sub_targets = Y[even_indices]
-                in_sub_loss = F.cross_entropy(in_sub_logits, in_sub_targets, ignore_index = tokenizer.pad_token_id)
-                in_sub_losses[k] = in_sub_loss.item()
-                in_sub_task_loss['train'] = in_sub_losses.mean()
+                # in_sub_logits = logits[even_indices]
+                # in_sub_targets = Y[even_indices]
+                # in_sub_loss = F.cross_entropy(in_sub_logits, in_sub_targets, ignore_index = tokenizer.pad_token_id)
+                # in_sub_losses[k] = in_sub_loss.item()
+                # in_sub_task_loss['train'] = in_sub_losses.mean()
     
     model.train()
     
     print("Main task loss:", out)
-    print("Sub-task loss:", sub_task_loss)
-    print("In-Sub-task loss:", in_sub_task_loss)
-    return out, sub_task_loss, in_sub_task_loss
+    # print("Sub-task loss:", sub_task_loss)
+    # print("In-Sub-task loss:", in_sub_task_loss)
+    return out
 
 
 # learning rate decay scheduler (cosine with warmup)
@@ -319,9 +321,9 @@ while True:
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
 
-        losses, sub_task_losses, in_sub_task_losses = estimate_loss()
+        losses = estimate_loss()
         with open(result_path, 'a') as out_file:
-            out_file.write(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']}, sub train loss {sub_task_losses['train']:.4f}, sub val loss {sub_task_losses['val']}, in sub train loss {in_sub_task_losses['train']:.4f}, in sub val loss {in_sub_task_losses['val']}, lr: {lr}\n")
+            out_file.write(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']}, lr: {lr}\n")
 
         if wandb_log:
             wandb.log({

@@ -6,4 +6,11 @@ math500.jsonl
 
 # Ignore synthetic/dataset/data directory
 synthetic/dataset/data/ 
+synthetic/dataset/__pycache__/ 
+synthetic/__pycache__/ 
 synthetic/logs/train_results_12_6_25000.txt
+
+synthetic/out-dp/
+synthetic/out-arithmetic/
+synthetic/eval_results/
+synthetic/logs

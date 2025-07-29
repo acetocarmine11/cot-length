@@ -106,7 +106,6 @@ def generate_cot_steps(node: Node, ff_mod: int, t: int) -> List[dict]:
                 break
 
     deepest_leaf = find_deepest_leaf(node)
-    # print(tree_to_expression(deepest_leaf))
 
     find_and_update(deepest_leaf)
 
