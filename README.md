@@ -11,6 +11,32 @@ This repository contains two main components:
 
 The synthetic training component is inspired by [karpathy/nanoGPT](https://github.com/karpathy/nanoGPT).
 
+## Project Structure
+
+```
+cot-length/
+├── synthetic/                 # Synthetic experiments
+│   ├── dataset/              # Dataset generation
+│   │   ├── gen_arith_data.py    # Arithmetic dataset generator
+│   │   ├── gen_dp_data.py       # DP dataset generator
+│   │   └── gen_*_test_data.py   # Test data generators
+│   ├── model/                # Model architectures
+│   │   ├── vanilla_gpt2.py      # Standard GPT-2 implementation
+│   │   └── looped_gpt2.py       # Looped transformer variant
+│   ├── scripts/              # Training/evaluation scripts
+│   │   ├── run_train.sh         # Training script
+│   │   └── run_eval.sh          # Evaluation script
+│   ├── train.py              # Main training script
+│   ├── eval.py               # Main evaluation script
+│   └── tokenizor.py          # Tokenization utilities
+├── real/                     # Real-world analysis
+│   ├── run_math500.py           # MATH500 sample generation
+│   ├── run_winogrande.py        # WinoGrande sample generation
+│   ├── eval_*_cot_length.py     # CoT length analysis
+│   └── eval_*_task_difficulty.py # Task difficulty analysis
+└── README.md
+```
+
 
 ## Part 1: Synthetic Experiments
 
@@ -140,32 +166,6 @@ python3 real/eval_winogrande_task_difficulty.py --data_dir outputs/winogrande --
 - `--output_dir`: Directory to save analysis results
 - `--model`: Specific model to analyze (optional, analyzes all if not specified)
 - `--no-filter`: Skip filtering questions with all correct/incorrect answers
-
-## Project Structure
-
-```
-cot-length/
-├── synthetic/                 # Synthetic experiments
-│   ├── dataset/              # Dataset generation
-│   │   ├── gen_arith_data.py    # Arithmetic dataset generator
-│   │   ├── gen_dp_data.py       # DP dataset generator
-│   │   └── gen_*_test_data.py   # Test data generators
-│   ├── model/                # Model architectures
-│   │   ├── vanilla_gpt2.py      # Standard GPT-2 implementation
-│   │   └── looped_gpt2.py       # Looped transformer variant
-│   ├── scripts/              # Training/evaluation scripts
-│   │   ├── run_train.sh         # Training script
-│   │   └── run_eval.sh          # Evaluation script
-│   ├── train.py              # Main training script
-│   ├── eval.py               # Main evaluation script
-│   └── tokenizor.py          # Tokenization utilities
-├── real/                     # Real-world analysis
-│   ├── run_math500.py           # MATH500 sample generation
-│   ├── run_winogrande.py        # WinoGrande sample generation
-│   ├── eval_*_cot_length.py     # CoT length analysis
-│   └── eval_*_task_difficulty.py # Task difficulty analysis
-└── README.md
-```
 
 
 ## License
