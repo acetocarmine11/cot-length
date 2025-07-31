@@ -91,7 +91,7 @@ After training, evaluate the model across different CoT lengths:
 
 ```bash
 # Basic evaluation
-python3 synthetic/eval.py --test_t=4 --model_size=6 --T=64 --test_T=32
+python3 synthetic/eval.py --test_t=3 --test_T=32 --model_size=6 --t=12 --T=80 
 
 # Or use the provided script for comprehensive evaluation
 bash synthetic/scripts/run_eval.sh
