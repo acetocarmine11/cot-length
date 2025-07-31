@@ -67,7 +67,7 @@ def process_sample(item: dict) -> list:
     """
     # 随机生成一个3到15之间的整数
     rand_int = random.randint(3, 15)
-    system_prompt = f"Please reason {rand_int} steps and complete the following sentence by choosing the most logical option to fill in the blank. your final answer should be the option number."
+    system_prompt = f"Please reason {rand_int} steps and complete the following sentence by choosing the most logical option to fill in the blank."
 
     user_prompt = f"""
     Sentence: "{item['sentence']}"
@@ -187,7 +187,7 @@ async def evaluate_question(idx: int, item: Dict[str, Any], args) -> bool:
     messages = process_sample(item)
     gt = str(item.get("answer", "")).strip()
     qid = item.get("qID", f"q{idx}") # Use qID if available, otherwise use index
-    out_file = Path(args.out) / Path(args.data) / f"{qid}.json"
+    out_file = Path(args.out) / Path(args.data) / Path(args.model) / f"{qid}.json"
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
     sem = asyncio.Semaphore(args.concurrency)
@@ -271,8 +271,8 @@ def parse_args():
     )
     p.add_argument("--data", default="winogrande_xs", help="Hugging Face dataset name for WinoGrande (e.g., winogrande_xs)")
     p.add_argument("--out", default="outputs", help="Directory to save per-question JSON logs")
-    p.add_argument("--model", default="qwen2.5-7b-instruct", help="Model name on DashScope")
-    p.add_argument("--samples", type=int, default=10, help="Samples per question")
+    p.add_argument("--model", default="qwen2.5-72b-instruct", help="Model name on DashScope")
+    p.add_argument("--samples", type=int, default=30, help="Samples per question")
     p.add_argument("--concurrency", type=int, default=20, help="Concurrent API calls")
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--max-tokens", type=int, dest="max_tokens", default=512)

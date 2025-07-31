@@ -50,7 +50,6 @@ from tqdm.asyncio import tqdm_asyncio as tqdm  # type: ignore
 from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct")
-system_prompt="Please reason step by step, and put your final answer within \\boxed{{}}."
 # ------------------------  CONSTANTS  ------------------------ #
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 BACKOFF_BASE = 1.8  # exponential back‑off base seconds
@@ -66,6 +65,7 @@ async def call_qwen(
     *,
     model: str,
     temperature: float,
+    top_p: float,
     max_tokens: int,
     seed: int,
     max_retries: int,
@@ -75,8 +75,10 @@ async def call_qwen(
 
     Adds rich logging of every attempt, HTTP code, back‑off sleep, and total RT.
     """
+    # 随机生成一个1到100之间的整数
+    random_number = random.randint(3, 15)
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": f"Please take {random_number} steps to solve the problem, and then put your final answer within \\boxed{{}}."},
         {"role": "user", "content": prompt}
     ]
 
@@ -94,6 +96,7 @@ async def call_qwen(
                 model=model,
                 messages=messages,
                 temperature=temperature,
+                top_p=top_p,
                 max_tokens=max_tokens,
                 seed=seed,
             )
@@ -198,7 +201,7 @@ async def evaluate_question(idx: int, item: Dict[str, Any], args) -> bool:
         raise KeyError(f"Missing 'problem' in item {idx}")
     gt = str(item.get("answer", "")).strip()
     qid = item.get("id", idx)
-    out_file = Path(args.out) / f"{qid}.json"
+    out_file = Path(args.out) / Path(args.data) / Path(args.model) / f"{qid}.json"
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
     sem = asyncio.Semaphore(args.concurrency)
@@ -214,6 +217,7 @@ async def evaluate_question(idx: int, item: Dict[str, Any], args) -> bool:
                 prompt,
                 model=args.model,
                 temperature=args.temperature,
+                top_p=args.top_p,
                 max_tokens=args.max_tokens,
                 seed=args.seed + sample_idx,  # decorrelate seeds per sample
                 max_retries=args.max_retries,
@@ -267,10 +271,11 @@ def parse_args():
     )
     p.add_argument("--data", default="math500.jsonl", help="Path to JSONL questions file")
     p.add_argument("--out", default="outputs", help="Directory to save per‑question JSON logs")
-    p.add_argument("--model", default="qwen2.5-7b-instruct", help="Model name on DashScope")
-    p.add_argument("--samples", type=int, default=10, help="Samples per question")
+    p.add_argument("--model", default="qwen2.5-1.5b-instruct", help="Model name on DashScope")
+    p.add_argument("--samples", type=int, default=30, help="Samples per question")
     p.add_argument("--concurrency", type=int, default=20, help="Concurrent API calls")
-    p.add_argument("--temperature", type=float, default=1.0)
+    p.add_argument("--temperature", type=float, default=1.2, help="Temperature for sampling (higher = more random)")
+    p.add_argument("--top-p", type=float, default=0.95, dest="top_p", help="Top-p sampling parameter (0.9 = more diverse)")
     p.add_argument("--max-tokens", type=int, dest="max_tokens", default=8192)
     p.add_argument("--seed", type=int, default=514, help="Global random seed")
     p.add_argument("--max-retries", type=int, default=10)
