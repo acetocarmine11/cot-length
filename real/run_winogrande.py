@@ -1,31 +1,17 @@
 #!/usr/bin/env python3
 """
-Batch-test Alibaba Cloud **Qwen 2.5** on the **WinoGrande** dataset from Hugging Face.
+Batch test language model on WinoGrande dataset from Hugging Face.
 
-Key features
-============
-* 💯 **samples** per question, every completion saved to `outputs/<qid>.json`.
-* **Rate-limit aware** – sleeps 60s on HTTP 429 before retrying.
-* **Output control** – `--max-tokens` caps assistant response length.
-* **Deterministic** – `--seed` sets both Python RNG *and* Qwen parameter.
-* Fully **async/parallel** via `asyncio` + OpenAI client.
-* 🪵 **Rich, configurable logging** – use `--debug` and/or `--log-file` to get detailed
-    per-request diagnostics including retries, back-offs, sleeps, and timings.
+Key features:
+- Multiple samples per question, saves completions to outputs
+- Rate-limit aware with automatic retry on HTTP 429
+- Configurable output length via max-tokens parameter
+- Deterministic seeding for reproducible results
+- Async/parallel processing for efficiency
+- Rich logging with debug options
 
-Quick start
------------
-```bash
-pip install openai tqdm python-dotenv datasets
-export ALIYUN_API_KEY="<your-key>"
-python run.py \
-       --data winogrande_xs \
-       --out outputs \
-       --samples 10 \
-       --max-tokens 512 \
-       --seed 42 \
-       --concurrency 20 \
-       --debug                # optional: turn on verbose console logging
-The script streams progress and prints the final accuracy.
+Usage:
+    python run_winogrande.py --data winogrande_xs --out outputs --samples 30
 """
 
 from __future__ import annotations
@@ -53,19 +39,16 @@ logger = logging.getLogger("qwen_winogrande")
 # ------------------------ PROMPT & DATA PROCESSING ------------------------
 def process_sample(item: dict) -> list:
     """
-    Processes a data sample to create a question-answering prompt.
-    The function takes a dictionary representing a WinoGrande-style problem
-    and formats it into a list of messages suitable for a conversational AI.
+    Process data sample to create question-answering prompt.
+    Takes WinoGrande-style problem and formats it for conversational AI.
 
     Args:
-        item: A dictionary with keys 'sentence', 'option1', 'option2'.
-            Example: {'sentence': "The trophy doesn't fit in the suitcase because _ is too big.",
-                        'option1': 'trophy', 'option2': 'suitcase', 'answer': '1'}
+        item: Dictionary with keys 'sentence', 'option1', 'option2'.
 
     Returns:
-        A list of dictionaries for the prompt, containing a system and a user message.
+        List of dictionaries for the prompt, containing system and user messages.
     """
-    # 随机生成一个3到15之间的整数
+    # Generate random step count for reasoning
     rand_int = random.randint(3, 15)
     system_prompt = f"Please reason {rand_int} steps and complete the following sentence by choosing the most logical option to fill in the blank."
 
@@ -95,8 +78,8 @@ async def call_qwen(
     max_retries: int,
     debug_prefix: str = "",
     ) -> str:
-    """Low-level helper – returns raw assistant completion text.
-    Adds rich logging of every attempt, HTTP code, back-off sleep, and total RT.
+    """Call language model API with retry logic and logging.
+    Returns raw completion text with detailed logging of attempts and timing.
     """
     client = AsyncOpenAI(
         api_key=api_key,
@@ -106,7 +89,7 @@ async def call_qwen(
     for attempt in range(1, max_retries + 1):
         start_ts = time.perf_counter()
         try:
-            logger.debug("%sAttempt %d POST …", debug_prefix, attempt)
+            logger.debug("%sAttempt %d POST", debug_prefix, attempt)
             
             completion = await client.chat.completions.create(
                 model=model,
@@ -120,7 +103,7 @@ async def call_qwen(
             response_text = completion.choices[0].message.content
             
             logger.debug(
-                "%s✅ 200 OK in %.2fs (tokens≈%d)",
+                "%s 200 OK in %.2fs (tokens~%d)",
                 debug_prefix,
                 dur,
                 len(response_text or ""),
@@ -131,7 +114,7 @@ async def call_qwen(
             dur = time.perf_counter() - start_ts
             if "rate limit" in str(e).lower() or "429" in str(e):
                 logger.warning(
-                    "%s⚠️ 429 Rate-limit. Sleeping %ds before retrying…",
+                    "%s Rate limit hit. Sleeping %ds before retrying",
                     debug_prefix,
                     DEFAULT_SLEEP_ON_429,
                 )
@@ -140,19 +123,19 @@ async def call_qwen(
             elif "server error" in str(e).lower() or any(str(code) in str(e) for code in [500, 502, 503, 504]):
                 backoff = BACKOFF_BASE ** attempt + random.random()
                 logger.warning(
-                    "%s⚠️ Server error. Back-off %.1fs then retry…",
+                    "%s Server error. Backing off %.1fs then retry",
                     debug_prefix,
                     backoff,
                 )
                 await asyncio.sleep(backoff)
                 continue
             elif attempt == max_retries:
-                logger.error("%s❌ %s (final attempt)", debug_prefix, type(e).__name__)
-                raise RuntimeError("Qwen call exceeded retry budget") from e
+                logger.error("%s %s (final attempt)", debug_prefix, type(e).__name__)
+                raise RuntimeError("API call exceeded retry budget") from e
             else:
                 backoff = BACKOFF_BASE ** attempt + random.random()
                 logger.warning(
-                    "%s⚠️ %s on attempt %d. Back-off %.1fs then retry…",
+                    "%s %s on attempt %d. Backing off %.1fs then retry",
                     debug_prefix,
                     type(e).__name__,
                     attempt,
@@ -160,14 +143,13 @@ async def call_qwen(
                 )
                 await asyncio.sleep(backoff)
 
-    raise RuntimeError("Unreachable – exceeded retries")
+    raise RuntimeError("Unreachable - exceeded retries")
 
 # ------------------------ OUTPUT PROCESSING ------------------------
 def extract_final_answer(text: str) -> str:
     """
-    Extracts the final answer ('1' or '2') from the model's response.
-    This function finds the last occurrence of '1' or '2' in the text,
-    assuming the model's final conclusion will be at the end of its reasoning.
+    Extract final answer ('1' or '2') from model response.
+    Finds last occurrence of '1' or '2' in text after 'option'.
     """
     processed_text = text.split("option")[-1]
     last_pos_1 = processed_text.rfind('1')
@@ -183,7 +165,7 @@ def extract_final_answer(text: str) -> str:
 
 # --------------------- PER-QUESTION EVAL --------------------
 async def evaluate_question(idx: int, item: Dict[str, Any], args) -> bool:
-    """Return True if any of the N samples is correct. Also dump all samples."""
+    """Evaluate question with multiple samples, return True if any sample is correct."""
     messages = process_sample(item)
     gt = str(item.get("answer", "")).strip()
     qid = item.get("qID", f"q{idx}") # Use qID if available, otherwise use index
@@ -210,7 +192,7 @@ async def evaluate_question(idx: int, item: Dict[str, Any], args) -> bool:
             )
         samples.append(txt)
         ans = extract_final_answer(txt)
-        logger.debug("Q%d-S%d ⇒ Extracted: '%s', Ground Truth: '%s'", idx, sample_idx, ans, gt)
+        logger.debug("Q%d-S%d => Extracted: '%s', Ground Truth: '%s'", idx, sample_idx, ans, gt)
         if not found.is_set() and ans == gt:
             found.set()
 
@@ -233,8 +215,7 @@ async def evaluate_question(idx: int, item: Dict[str, Any], args) -> bool:
 # ------------------------ MAIN DRIVER ----------------------
 async def main_async(args):
     random.seed(args.seed)
-    # The WinoGrande dataset has 'train', 'validation', 'test' splits. We use the test split.
-    # The 'winogrande_xs' subset has 1267 samples in its test split.
+    # Load WinoGrande dataset from Hugging Face
     try:
         dataset = load_dataset("winogrande", args.data, split="train")
         data = list(dataset) # Convert to list for tqdm and easier handling
@@ -266,19 +247,19 @@ async def main_async(args):
 # ------------------------ ENTRYPOINT -----------------------
 def parse_args():
     p = argparse.ArgumentParser(
-        "Qwen 2.5 evaluation on WinoGrande (full logging)",
+        "Language model evaluation on WinoGrande",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--data", default="winogrande_xs", help="Hugging Face dataset name for WinoGrande (e.g., winogrande_xs)")
+    p.add_argument("--data", default="winogrande_xs", help="Hugging Face dataset name for WinoGrande")
     p.add_argument("--out", default="outputs", help="Directory to save per-question JSON logs")
-    p.add_argument("--model", default="qwen2.5-72b-instruct", help="Model name on DashScope")
+    p.add_argument("--model", default="qwen2.5-72b-instruct", help="Model name")
     p.add_argument("--samples", type=int, default=30, help="Samples per question")
     p.add_argument("--concurrency", type=int, default=20, help="Concurrent API calls")
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument("--max-tokens", type=int, dest="max_tokens", default=512)
     p.add_argument("--seed", type=int, default=42, help="Global random seed")
     p.add_argument("--max-retries", type=int, default=10)
-    p.add_argument("--api-key", type=str, default="", help="DashScope API key (or env var ALIYUN_API_KEY)")
+    p.add_argument("--api-key", type=str, default="", help="API key (or env var ALIYUN_API_KEY)")
     p.add_argument("--debug", action="store_true", help="Enable verbose debug logging")
     p.add_argument(
         "--log-file", type=str, default="", help="Optional path to write log file"

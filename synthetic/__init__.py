@@ -1,4 +1,4 @@
-# my_project/tokenizor.py
+# synthetic package init
 
 def prepare_and_save_data():
     print("Data prepared and saved.")
@@ -15,4 +15,4 @@ def ts():
 def dpTokenizer():
     print("dpTokenizer function called.")
 
-print("tokenizor.py has been loaded.")
+print("synthetic package loaded.")

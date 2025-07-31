@@ -5,7 +5,7 @@ import tqdm
 import os
 import sys
 sys.path.append('..')
-from tokenizor import ff_mod
+from ..tokenizor import ff_mod
 class Node:
     def __init__(self, value, parent=None):
         self.value = value

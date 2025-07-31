@@ -37,7 +37,7 @@ seed = 1337
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
 compile = False # use PyTorch 2.0 to compile the model to be faster
 args = get_args()
-device = f'cuda' 
+device = f'cuda:{args.device}' 
 test_T = args.test_T
 test_t = args.test_t
 t = args.t
@@ -68,8 +68,13 @@ if args.dp:
     model_path = f'out-dp/model-size_{model_size}/T_{T}/mixed_t_{t}'
     tokenizor = dpTokenizer
 else:
-    model_path = "acetocarmine/M_6_T_80_t_12"
+    model_path = f'out-arithmetic/model-size_{model_size}/T_{T}/mixed_t_{t}'
     tokenizor = arithmeticTokenizer
+
+
+if args.model_type == 'looped_gpt2':
+    model_path += f'/looped_gpt2_nloop_{n_loop}'
+
 
 vocab_size = tokenizor.vocab_len
 
@@ -88,7 +93,7 @@ if model_type == 'looped_gpt2':
     )
     model = GPT(configuration)
     # Load the state_dict from the saved model
-    state_dict = torch.load(f"{model_path}/pytorch_model.bin", map_location='cpu')
+    state_dict = torch.load(f"{model_path}/pytorch_model.bin", map_location=device)
     model.load_state_dict(state_dict)
 else:
     # Use standard AutoModelForCausalLM for gpt2 models
@@ -118,7 +123,7 @@ if __name__ == "__main__":
         data = [json.loads(line) for line in f]
     batch_size = 1  # Define batch size for batching queries
     correct = 0
-    total = 10
+    total = 100
     prompt_nums = [0,0,0,0,0,0,0,0,0,0]
 
     # Process data in batches
@@ -147,11 +152,11 @@ if __name__ == "__main__":
                     # print(answer_str[prompt_idx])
                     # print(answer_str)
                     prompt_nums[int(answer_str[prompt_idx+2])-1] +=1
-                    print(answer_str[-(len(batch[idx]['answer'])+1):])
-                    print('---------------')
-                    print(answer_str)
-                    print(f"std_answer = {batch[idx]['answer']}")
-                    print('---------------')
+                    # print(answer_str[-(len(batch[idx]['answer'])+1):])
+                    # print('---------------')
+                    # print(answer_str)
+                    # print(f"std_answer = {batch[idx]['answer']}")
+                    # print('---------------')
 
 
     dataset_type = "dp" if args.dp else "arithmetic"

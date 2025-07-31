@@ -150,8 +150,8 @@ def parallel_generate_data(args):
 
 
 def gen_mixed_data():
-    T = 80  # max depth of tree
-    t = 12
+    T = 24  # max depth of tree
+    t = 4
     base_samples = 200                                                                   
     num_cpus = 10
     train_samples = num_cpus*base_samples*9
