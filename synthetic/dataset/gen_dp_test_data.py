@@ -114,54 +114,14 @@ def write_jsonl(data: List[dict], filename: str, write_type='w'):
         for item in data:
             f.write(json.dumps(item, ensure_ascii=False) + '\n')
 
-def parallel_generate_data(args):
-    """并行生成数据的辅助函数。"""
-    num_samples, T, t, mix = args
-    return generate_data(num_samples, T, t, mix)
 
-def gen_mixed_data():
-    """主函数：配置并运行数据生成过程。"""
-    T = 32  # 三角形最大高度
-    t_max = 4 # 控制CoT步长的上限
-    base_samples = 200                                                                   
-    num_cpus = 10
-    train_samples = num_cpus * base_samples * 9
-    val_samples = num_cpus * base_samples
-    num_processes = 9
-    
-    output_dir = f'synthetic/dataset/data/dp/{T}/mixed_t_{t_max}/'
-
-    # 用于生成不同t值的数据并追加到同一个文件
-    for i, temp_t in enumerate(ts):
-        if temp_t >= t_max:
-            break
-        
-        # 您的代码中有一个 temp_t += 1 的逻辑，这里予以保留
-        # 如果您不想要+1，可以直接使用 temp_t
-        actual_t = temp_t #+ 1 
-        print(f"\n--- Generating data for t = {actual_t} ---")
-
-        # --- 生成训练数据 ---
-        args_train = [(train_samples // num_processes, T, actual_t, True) for _ in range(num_processes)]
-        with Pool(num_processes) as pool:
-            results = pool.map(parallel_generate_data, args_train)
-        train_data = [item for sublist in results for item in sublist]
-        write_mode = 'w' if i == 0 else 'a' # 第一次写入用'w'，之后用'a'追加
-        write_jsonl(train_data, os.path.join(output_dir, 'train.jsonl'), write_type=write_mode)
-
-        # --- 生成验证数据 ---
-        args_val = [(val_samples // num_processes, T, actual_t, True) for _ in range(num_processes)]
-        with Pool(num_processes) as pool:
-            results = pool.map(parallel_generate_data, args_val)
-        val_data = [item for sublist in results for item in sublist]
-        write_jsonl(val_data, os.path.join(output_dir, 'val.jsonl'), write_type=write_mode)
-
-    print("\n--- Tokenizing data ---")
-    prepare_and_save_data(output_dir, 'train', dpTokenizer, data_type='dp')
-    prepare_and_save_data(output_dir, 'val', dpTokenizer, data_type='dp')
-    print(f"\nData generation complete. Files are in {output_dir}")
 
 if __name__ == "__main__":
-    # 在某些系统上，并行处理需要设置启动方法
-    # multiprocessing.set_start_method('spawn', force=True) 
-    gen_mixed_data()
+    T = 40  # max depth of tree
+    t = 8  # one step cot length
+    test_samples_each = 100
+
+    
+    for temp_T in range(t,T+1):
+        data = generate_data(test_samples_each, temp_T, t, False)
+        write_jsonl(data, f'synthetic/dataset/data/dp/test/{temp_T}.jsonl')

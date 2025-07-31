@@ -155,7 +155,7 @@ if __name__ == "__main__":
     # # Example of getting a batch
     batch_size = 100
     block_size = 1024
-    device = torch.device('mps' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
     
     train_batch = batch_generator(path, 'train', batch_size, block_size, device, dpTokenizer)
     x, y = next(train_batch)
