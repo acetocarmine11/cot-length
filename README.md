@@ -103,6 +103,8 @@ bash synthetic/scripts/run_eval.sh
 - `--model_size`: Model size (must match training)
 - `--device`: Evaluation device
 
+To facilitate reproducibility, we have released the ckpts of base models used for RL post-training on huggingface: `acetocarmine/M_6_T_80_t_12` and `acetocarmine/M_9_T_80_t_12`. These are 6-layer and 9-layer GPT-2 models, respectively, trained on a dataset with `max operators = 80` and `max ops/step = 12`.
+
 #### 5. View Sample Data
 To inspect the generated datasets:
 
@@ -176,3 +178,16 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Synthetic training component inspired by [karpathy/nanoGPT](https://github.com/karpathy/nanoGPT)
 - Real-world datasets: MATH500, WinoGrande, MMLU, GPQA benchmarks
+
+## Citation
+
+If you find this work useful, please give us a free cite:
+
+```bash
+@article{wu2025optcotl,
+  title={When More is Less: Understanding Chain-of-Thought Length in LLMs}, 
+  author={Yuyang Wu and Yifei Wang and Ziyu Ye and Tianqi Du and Stefanie Jegelka and Yisen Wang},
+  journal={arXiv preprint arXiv:2502.07266},
+  year={2025}
+}
+```
